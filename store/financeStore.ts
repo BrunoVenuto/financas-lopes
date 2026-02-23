@@ -47,6 +47,7 @@ type FinanceStore = {
 
   // (opcional)
   resetAll: () => void;
+  recalculateBalances: () => void;
 };
 
 const STORE_KEY = "financas-lopes-store";
@@ -68,7 +69,20 @@ const deltaFrom = (amount: number, type: TransactionType) =>
 const applyDeltaToAccount = (accounts: Account[], accountId: string, delta: number) => {
   return accounts.map((acc) => {
     if (acc.id !== accountId) return acc;
-    return { ...acc, balance: (acc.balance || 0) + delta };
+    const oldBalance = typeof acc.balance === 'number' && !isNaN(acc.balance) ? acc.balance : Number(acc.balance) || 0;
+    const numDelta = typeof delta === 'number' && !isNaN(delta) ? delta : Number(delta) || 0;
+    return { ...acc, balance: oldBalance + numDelta };
+  });
+};
+
+const recalculateAccounts = (accounts: Account[], transactions: Transaction[]) => {
+  return accounts.map((acc) => {
+    const accTxs = transactions.filter((t) => t.accountId === acc.id);
+    const balance = accTxs.reduce((sum, tx) => {
+      const amt = typeof tx.amount === "number" && !isNaN(tx.amount) ? tx.amount : Number(tx.amount) || 0;
+      return sum + (tx.type === "INCOME" ? amt : -amt);
+    }, 0);
+    return { ...acc, balance };
   });
 };
 
@@ -107,7 +121,8 @@ export const useFinanceStore = create<FinanceStore>()(
       addTransaction: (input) => {
         const state = get();
 
-        const amount = toNumber(input.amount);
+        const amountStr = typeof input.amount === 'string' ? (input.amount as string).replace(/\./g, '').replace(',', '.') : input.amount;
+        const amount = toNumber(amountStr);
         if (!input.description?.trim()) return;
         if (!input.accountId) return;
         if (!Number.isFinite(amount) || amount <= 0) return;
@@ -124,39 +139,32 @@ export const useFinanceStore = create<FinanceStore>()(
           date: input.date || new Date().toISOString(),
         };
 
-        const delta = deltaFrom(amount, tx.type);
-
-        // ✅ Atualiza saldo + transações (imutável)
-        set((prev) => ({
-          ...prev,
-          accounts: applyDeltaToAccount(prev.accounts, tx.accountId, delta),
-          transactions: [tx, ...prev.transactions],
-        }));
+        // ✅ Atualiza saldo recalculando baseado no histórico de transações
+        set((prev) => {
+          const newTransactions = [tx, ...prev.transactions];
+          return {
+            ...prev,
+            accounts: recalculateAccounts(prev.accounts, newTransactions),
+            transactions: newTransactions,
+          };
+        });
       },
 
       deleteTransaction: (txId) => {
-        const state = get();
-        const tx = state.transactions.find((t) => t.id === txId);
-        if (!tx) return;
-
-        const amount = toNumber(tx.amount);
-        if (!Number.isFinite(amount) || amount <= 0) {
-          // remove mesmo assim
-          set((prev) => ({
+        set((prev) => {
+          const newTransactions = prev.transactions.filter((t) => t.id !== txId);
+          return {
             ...prev,
-            transactions: prev.transactions.filter((t) => t.id !== txId),
-          }));
-          return;
-        }
+            accounts: recalculateAccounts(prev.accounts, newTransactions),
+            transactions: newTransactions,
+          };
+        });
+      },
 
-        // delta original
-        const originalDelta = deltaFrom(amount, tx.type);
-
-        // ✅ Reverte o saldo ao excluir
+      recalculateBalances: () => {
         set((prev) => ({
           ...prev,
-          accounts: applyDeltaToAccount(prev.accounts, tx.accountId, -originalDelta),
-          transactions: prev.transactions.filter((t) => t.id !== txId),
+          accounts: recalculateAccounts(prev.accounts, prev.transactions),
         }));
       },
 
@@ -164,7 +172,7 @@ export const useFinanceStore = create<FinanceStore>()(
         // limpa o estado e também “força” reset do persist
         try {
           localStorage.removeItem(STORE_KEY);
-        } catch {}
+        } catch { }
         set(() => ({ ...initialState }));
       },
     }),

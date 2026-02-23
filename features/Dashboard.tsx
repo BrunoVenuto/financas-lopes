@@ -11,7 +11,10 @@ const Dashboard: React.FC<{ onAction: (action: string) => void }> = ({ onAction 
   const [aiInsight, setAiInsight] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
 
-  const totalBalance = accounts.reduce((acc, curr) => acc + curr.balance, 0);
+  const totalBalance = transactions.reduce((sum, tx) => {
+    const amt = typeof tx.amount === "number" && !isNaN(tx.amount) ? tx.amount : Number(tx.amount) || 0;
+    return sum + (tx.type === "INCOME" ? amt : -amt);
+  }, 0);
   const recentTransactions = transactions.slice(0, 5);
 
   const fetchAiInsight = async () => {
@@ -46,11 +49,11 @@ const Dashboard: React.FC<{ onAction: (action: string) => void }> = ({ onAction 
   }, [transactions.length]);
 
   const chartData = [
-    { name: "4d ago", value: totalBalance * 0.9 },
-    { name: "3d ago", value: totalBalance * 0.95 },
-    { name: "2d ago", value: totalBalance * 0.92 },
-    { name: "Yesterday", value: totalBalance * 0.98 },
-    { name: "Today", value: totalBalance },
+    { name: "4d atrás", value: totalBalance * 0.9 },
+    { name: "3d atrás", value: totalBalance * 0.95 },
+    { name: "2d atrás", value: totalBalance * 0.92 },
+    { name: "Ontem", value: totalBalance * 0.98 },
+    { name: "Hoje", value: totalBalance },
   ];
 
   return (
@@ -222,9 +225,8 @@ const Dashboard: React.FC<{ onAction: (action: string) => void }> = ({ onAction 
 
                 <div className="text-right">
                   <p
-                    className={`text-sm font-display font-bold ${
-                      tx.type === "INCOME" ? "text-emerald-400" : "text-white"
-                    }`}
+                    className={`text-sm font-display font-bold ${tx.type === "INCOME" ? "text-emerald-400" : "text-white"
+                      }`}
                   >
                     {tx.type === "EXPENSE" ? "-" : "+"}${tx.amount.toFixed(2)}
                   </p>

@@ -13,6 +13,8 @@ import {
 import { TransactionType } from './types';
 import CloudSyncModal from './features/CloudSyncModal';
 import ImportExtratoModal from './features/ImportExtratoModal';
+import Wallet from './features/Wallet';
+import IAStats from './features/IAStats';
 
 const App: React.FC = () => {
   const { user, onboard, transactions, accounts, deleteTransaction, addTransaction } = useFinanceStore();
@@ -21,6 +23,11 @@ const App: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCloudModal, setShowCloudModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+
+  React.useEffect(() => {
+    // 🔥 Garante que todos os saldos estejam corretos em caso de corrupção do localStorage
+    useFinanceStore.getState().recalculateBalances();
+  }, []);
 
   // ⚠️ Eu mantive seu padrão original: você usa o mesmo formData pra onboard e pra transação.
   // Funciona, mas é estranho. Mantive pra não quebrar seu fluxo atual.
@@ -84,7 +91,8 @@ const App: React.FC = () => {
   const handleAddTransaction = () => {
     if (!formData.description || !formData.amount || !accountDefault) return;
 
-    const amountNumber = Number(String(formData.amount).replace(',', '.'));
+    const amountStr = String(formData.amount).replace(/\./g, '').replace(',', '.');
+    const amountNumber = Number(amountStr);
     if (Number.isNaN(amountNumber) || amountNumber <= 0) return;
 
     addTransaction({
@@ -109,13 +117,13 @@ const App: React.FC = () => {
               console.log('[App] action:', act);
 
               if (act === 'new_transaction') setShowAddModal(true);
-              if (act === 'view_transactions') setActiveTab('Transactions');
+              if (act === 'view_transactions') setActiveTab('Transações');
               if (act === 'cloud') setShowCloudModal(true);
             }}
           />
         )}
 
-        {activeTab === 'Transactions' && (
+        {activeTab === 'Transações' && (
           <div className="pt-8 space-y-6 pb-24 animate-in fade-in slide-in-from-right-4">
             <div className="flex justify-between items-center">
               <h1 className="text-2xl font-display font-extrabold">Transações</h1>
@@ -163,9 +171,8 @@ const App: React.FC = () => {
 
                       <div className="text-right">
                         <p
-                          className={`font-display font-bold ${
-                            tx.type === TransactionType.INCOME ? 'text-emerald-400' : 'text-white'
-                          }`}
+                          className={`font-display font-bold ${tx.type === TransactionType.INCOME ? 'text-emerald-400' : 'text-white'
+                            }`}
                         >
                           {tx.type === TransactionType.EXPENSE ? '-' : '+'}R$ {tx.amount.toFixed(2)}
                         </p>
@@ -190,6 +197,9 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+
+        {activeTab === 'Carteira' && <Wallet />}
+        {activeTab === 'Estatísticas' && <IAStats />}
       </main>
 
       {/* Bottom Navigation */}
@@ -198,16 +208,15 @@ const App: React.FC = () => {
           <button
             key={item.label}
             onClick={() => setActiveTab(item.label)}
-            className={`flex flex-col items-center gap-1.5 transition-all duration-300 ${
-              activeTab === item.label ? 'text-snappy-400 -translate-y-1' : 'text-white/30 hover:text-white/50'
-            }`}
+            className={`flex flex-col items-center gap-1.5 transition-all duration-300 ${activeTab === item.label ? 'text-snappy-400 -translate-y-1' : 'text-white/30 hover:text-white/50'
+              }`}
             type="button"
           >
             <div className={`p-1 rounded-lg transition-colors ${activeTab === item.label ? 'bg-snappy-400/10' : ''}`}>
               {item.icon}
             </div>
             <span className="text-[9px] font-black uppercase tracking-tighter">
-              {item.label === 'Stats' ? 'IA Stats' : item.label}
+              {item.label}
             </span>
           </button>
         ))}
@@ -262,22 +271,20 @@ const App: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, type: TransactionType.EXPENSE })}
-                      className={`rounded-xl py-2 text-sm font-extrabold border transition ${
-                        formData.type === TransactionType.EXPENSE
-                          ? 'bg-white/10 border-white/20 text-white'
-                          : 'bg-white/5 border-white/10 text-white/70'
-                      }`}
+                      className={`rounded-xl py-2 text-sm font-extrabold border transition ${formData.type === TransactionType.EXPENSE
+                        ? 'bg-white/10 border-white/20 text-white'
+                        : 'bg-white/5 border-white/10 text-white/70'
+                        }`}
                     >
                       Saída
                     </button>
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, type: TransactionType.INCOME })}
-                      className={`rounded-xl py-2 text-sm font-extrabold border transition ${
-                        formData.type === TransactionType.INCOME
-                          ? 'bg-white/10 border-white/20 text-white'
-                          : 'bg-white/5 border-white/10 text-white/70'
-                      }`}
+                      className={`rounded-xl py-2 text-sm font-extrabold border transition ${formData.type === TransactionType.INCOME
+                        ? 'bg-white/10 border-white/20 text-white'
+                        : 'bg-white/5 border-white/10 text-white/70'
+                        }`}
                     >
                       Entrada
                     </button>
