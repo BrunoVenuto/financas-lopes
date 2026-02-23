@@ -27,6 +27,33 @@ Este projeto foi desenhado para ser hospedado em segundos:
   - `API_KEY`: Sua chave do [Google AI Studio](https://aistudio.google.com/).
 - O deploy será automático.
 
+### 🔥 Firebase (Opcional — Cloud Sync)
+O app é **local-first**, mas você pode ativar **backup/restauração** com Firebase (Auth + Firestore).
+
+1) Crie um projeto no Firebase e habilite:
+- **Authentication → Email/Password**
+- **Firestore Database**
+
+2) Adicione estas variáveis no seu `.env` (Vite):
+```bash
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+```
+
+3) Instale a dependência:
+```bash
+npm i firebase
+```
+
+4) No app, toque no ícone de nuvem (Home) para:
+- Criar conta / Entrar
+- Fazer **Backup** (upload)
+- **Restaurar** (download)
+
 ### 2. GitHub Pages
 - Como o projeto é estático (`index.html`), basta ativar o GitHub Pages nas configurações do repositório.
 - *Nota:* Certifique-se de que a chave da API esteja disponível no ambiente ou passada via segredos.

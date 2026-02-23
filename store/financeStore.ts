@@ -1,108 +1,176 @@
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { TransactionType } from "../types";
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { 
-  Account, 
-  Transaction, 
-  Budget, 
-  Goal, 
-  UserState, 
-  AccountType, 
-  TransactionType 
-} from '../types';
+type Currency = "BRL" | "USD" | "EUR";
 
-interface FinanceStore {
+export type UserState = {
+  name: string;
+  currency: Currency;
+  isOnboarded: boolean;
+};
+
+export type Account = {
+  id: string;
+  name: string;
+  balance: number;
+};
+
+export type Transaction = {
+  id: string;
+  accountId: string;
+  amount: number; // sempre positivo
+  type: TransactionType; // INCOME | EXPENSE
+  categoryId: string;
+  description: string;
+  date: string; // ISO
+};
+
+export type Goal = {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  color: string;
+};
+
+type FinanceStore = {
   user: UserState;
   accounts: Account[];
   transactions: Transaction[];
-  budgets: Budget[];
   goals: Goal[];
-  
-  // Actions
-  onboard: (name: string, currency: string) => void;
-  addAccount: (account: Omit<Account, 'id' | 'lastUpdated'>) => void;
-  addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
-  addBudget: (budget: Omit<Budget, 'id' | 'spent'>) => void;
-  addGoal: (goal: Omit<Goal, 'id' | 'currentAmount'>) => void;
-  deleteTransaction: (id: string) => void;
-}
+
+  onboard: (name: string, currency: Currency) => void;
+
+  addTransaction: (tx: Omit<Transaction, "id">) => void;
+  deleteTransaction: (txId: string) => void;
+
+  // (opcional)
+  resetAll: () => void;
+};
+
+const STORE_KEY = "financas-lopes-store";
+
+const genId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `id_${Math.random().toString(16).slice(2)}_${Date.now()}`;
+};
+
+const toNumber = (v: unknown) => {
+  // aceita "120,50" e "120.50"
+  const n = Number(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : NaN;
+};
+
+const deltaFrom = (amount: number, type: TransactionType) =>
+  type === TransactionType.INCOME ? amount : -amount;
+
+const applyDeltaToAccount = (accounts: Account[], accountId: string, delta: number) => {
+  return accounts.map((acc) => {
+    if (acc.id !== accountId) return acc;
+    return { ...acc, balance: (acc.balance || 0) + delta };
+  });
+};
+
+const initialState: Pick<FinanceStore, "user" | "accounts" | "transactions" | "goals"> = {
+  user: { name: "Usuário", currency: "BRL", isOnboarded: false },
+  accounts: [
+    {
+      id: "acc_default",
+      name: "Carteira",
+      balance: 0,
+    },
+  ],
+  transactions: [],
+  goals: [],
+};
 
 export const useFinanceStore = create<FinanceStore>()(
   persist(
-    (set) => ({
-      user: {
-        isOnboarded: false,
-        currency: 'USD',
-        name: '',
+    (set, get) => ({
+      ...initialState,
+
+      onboard: (name, currency) => {
+        set((prev) => ({
+          ...prev,
+          user: {
+            ...prev.user,
+            name: (name || "Usuário").trim(),
+            currency,
+            isOnboarded: true,
+          },
+          // garante que exista pelo menos uma conta
+          accounts: prev.accounts?.length ? prev.accounts : initialState.accounts,
+        }));
       },
-      accounts: [
-        { id: '1', name: 'Main Bank', type: AccountType.CHECKING, balance: 2540.50, currency: 'USD', lastUpdated: new Date().toISOString(), color: '#7F7BD8' },
-        { id: '2', name: 'Wallet', type: AccountType.CASH, balance: 120.00, currency: 'USD', lastUpdated: new Date().toISOString(), color: '#F4A86B' },
-      ],
-      transactions: [
-        { id: 't1', accountId: '1', amount: 15.50, type: TransactionType.EXPENSE, categoryId: 'cat_food', description: 'Starbucks', date: new Date().toISOString() },
-        { id: 't2', accountId: '1', amount: 2400.00, type: TransactionType.INCOME, categoryId: 'cat_work', description: 'Monthly Salary', date: new Date().toISOString() },
-      ],
-      budgets: [],
-      goals: [
-        { id: 'g1', name: 'New iPhone', targetAmount: 1200, currentAmount: 450, deadline: '2024-12-31', color: '#ED803C' }
-      ],
 
-      onboard: (name, currency) => set((state) => ({ 
-        user: { ...state.user, name, currency, isOnboarded: true } 
-      })),
+      addTransaction: (input) => {
+        const state = get();
 
-      addAccount: (account) => set((state) => ({
-        accounts: [...state.accounts, { ...account, id: Math.random().toString(36).substr(2, 9), lastUpdated: new Date().toISOString() }]
-      })),
+        const amount = toNumber(input.amount);
+        if (!input.description?.trim()) return;
+        if (!input.accountId) return;
+        if (!Number.isFinite(amount) || amount <= 0) return;
 
-      addTransaction: (transaction) => set((state) => {
-        const id = Math.random().toString(36).substr(2, 9);
-        const newTransactions = [{ ...transaction, id }, ...state.transactions];
-        
-        // Update account balances
-        const newAccounts = state.accounts.map(acc => {
-          if (acc.id === transaction.accountId) {
-            const multiplier = transaction.type === TransactionType.INCOME ? 1 : -1;
-            return { ...acc, balance: acc.balance + (transaction.amount * multiplier) };
-          }
-          if (transaction.type === TransactionType.TRANSFER && acc.id === transaction.toAccountId) {
-            return { ...acc, balance: acc.balance + transaction.amount };
-          }
-          return acc;
-        });
+        // garante que a conta existe (pra não “somar em nada”)
+        const accountExists = state.accounts.some((a) => a.id === input.accountId);
+        if (!accountExists) return;
 
-        return { transactions: newTransactions, accounts: newAccounts };
-      }),
-
-      addBudget: (budget) => set((state) => ({
-        budgets: [...state.budgets, { ...budget, id: Math.random().toString(36).substr(2, 9), spent: 0 }]
-      })),
-
-      addGoal: (goal) => set((state) => ({
-        goals: [...state.goals, { ...goal, id: Math.random().toString(36).substr(2, 9), currentAmount: 0 }]
-      })),
-
-      deleteTransaction: (id) => set((state) => {
-        const tx = state.transactions.find(t => t.id === id);
-        if (!tx) return state;
-
-        const newAccounts = state.accounts.map(acc => {
-          if (acc.id === tx.accountId) {
-            const multiplier = tx.type === TransactionType.INCOME ? -1 : 1;
-            return { ...acc, balance: acc.balance + (tx.amount * multiplier) };
-          }
-          return acc;
-        });
-
-        return {
-          transactions: state.transactions.filter(t => t.id !== id),
-          accounts: newAccounts
+        const tx: Transaction = {
+          id: genId(),
+          ...input,
+          description: input.description.trim(),
+          amount, // sempre positivo
+          date: input.date || new Date().toISOString(),
         };
-      })
+
+        const delta = deltaFrom(amount, tx.type);
+
+        // ✅ Atualiza saldo + transações (imutável)
+        set((prev) => ({
+          ...prev,
+          accounts: applyDeltaToAccount(prev.accounts, tx.accountId, delta),
+          transactions: [tx, ...prev.transactions],
+        }));
+      },
+
+      deleteTransaction: (txId) => {
+        const state = get();
+        const tx = state.transactions.find((t) => t.id === txId);
+        if (!tx) return;
+
+        const amount = toNumber(tx.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          // remove mesmo assim
+          set((prev) => ({
+            ...prev,
+            transactions: prev.transactions.filter((t) => t.id !== txId),
+          }));
+          return;
+        }
+
+        // delta original
+        const originalDelta = deltaFrom(amount, tx.type);
+
+        // ✅ Reverte o saldo ao excluir
+        set((prev) => ({
+          ...prev,
+          accounts: applyDeltaToAccount(prev.accounts, tx.accountId, -originalDelta),
+          transactions: prev.transactions.filter((t) => t.id !== txId),
+        }));
+      },
+
+      resetAll: () => {
+        // limpa o estado e também “força” reset do persist
+        try {
+          localStorage.removeItem(STORE_KEY);
+        } catch {}
+        set(() => ({ ...initialState }));
+      },
     }),
     {
-      name: 'tanzine-finance-storage',
+      name: STORE_KEY,
+      version: 1,
     }
   )
 );
